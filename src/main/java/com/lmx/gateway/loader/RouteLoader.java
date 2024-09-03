@@ -3,16 +3,16 @@ package com.lmx.gateway.loader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cloud.gateway.event.RefreshRoutesEvent;
 import org.springframework.cloud.gateway.filter.FilterDefinition;
 import org.springframework.cloud.gateway.handler.predicate.PredicateDefinition;
-import org.springframework.cloud.gateway.route.RouteDefinition;
-import org.springframework.cloud.gateway.route.RouteDefinitionLocator;
-import org.springframework.cloud.gateway.route.RouteDefinitionWriter;
-import org.springframework.context.annotation.ComponentScan;
+import org.springframework.cloud.gateway.route.*;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import javax.annotation.Resource;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.*;
@@ -32,11 +32,20 @@ public class RouteLoader {
     @Autowired
     private RouteDefinitionLocator routeDefinitionLocator;
 
+    @Autowired
+    private ApplicationEventPublisher publisher;
 
+
+    /**
+     * 获取内存中所有的路由信息
+     * @return
+     */
     public List<RouteDefinition> getAllRoutes() {
         List<RouteDefinition> result = new ArrayList<>();
+
         Flux<RouteDefinition> routeDefinitions = routeDefinitionLocator.getRouteDefinitions();
         routeDefinitions.subscribe(routeDefinition -> {
+            System.out.println(routeDefinition);
             result.add(routeDefinition);
         });
         return result;
@@ -64,11 +73,11 @@ public class RouteLoader {
         routeDefinition.setPredicates(predicateDefinitions);
 
         //设置对应的过滤器
-//        List<FilterDefinition> filterDefinitions = new ArrayList<>();
-//        String filterStr = String.format("RewritePath=%s,%s", currentPath, targetPath);
-//        FilterDefinition filterDefinition = new FilterDefinition(filterStr);
-//        filterDefinitions.add(filterDefinition);
-//        routeDefinition.setFilters(filterDefinitions);
+        List<FilterDefinition> filterDefinitions = new ArrayList<>();
+        String filterStr = String.format("RewritePath=%s,%s", currentPath, targetPath);
+        FilterDefinition filterDefinition = new FilterDefinition(filterStr);
+        filterDefinitions.add(filterDefinition);
+        routeDefinition.setFilters(filterDefinitions);
 
         try {
             URI targetUrl = new URI(targetUri);
@@ -77,7 +86,24 @@ public class RouteLoader {
           LOGGER.error("URI解析失败{}",e);
         }
         routeDefinitionWriter.save(Mono.just(routeDefinition)).subscribe();
+        //刷新路由缓存
+        this.refreshRoutes();
         return id;
     }
+
+
+//    public String updateRoute(){
+//        return this.routeDefinitionLocator.get()
+//                .filter(route -> route.getId().equals(id))
+//    }
+
+
+    /**
+     * 刷新所有路由
+     */
+    public void refreshRoutes(){
+        this.publisher.publishEvent(new RefreshRoutesEvent(this));
+    }
+
 
 }
